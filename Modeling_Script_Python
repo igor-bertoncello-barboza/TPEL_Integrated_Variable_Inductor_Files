@@ -1,0 +1,133 @@
+# INTEGRATED VI AND FI - 3 X EE 42/21/20
+
+import numpy as np
+from scipy.optimize import fsolve
+from math import exp, pi
+
+# Constants
+u0 = 4*pi*1e-7  # Permeability of free space
+
+# Curve B-H - N87 Ferrite Material
+k1, k2, k3 = 1.1, 30.8, 116.1
+
+# Total and Differential Permeabilities
+def ut(B): return 1 / (k1*np.exp(k2*((B)**(2)))+k3)
+def ud(B): return 1 / (k1*(1+2*k2*(B**(2)))*np.exp(k2*((B)**(2)))+k3)
+
+# Physical Core Model E 42/21/20
+A1, A2, A3, Ac = 101.76e-6, 108.48e-6, 101.76e-6, 234e-6
+l1, l2_UP, l2_DW, l3 = 18.18e-3, 36.2e-3, 18.1e-3, 2.65e-3
+lgVI, lgFI, lgVI_b  = 0.236e-3, 0.118e-3, 10e-6
+lgFI_lat = lgFI/100
+
+# Design Specifications
+NVI, NFI, Nb = 13, 5, 65
+RgVI = lgVI/(u0*Ac)
+RgFI = lgFI/(u0*Ac)
+RgVI_b = lgVI_b/(u0*A2)
+RgFI_lat = lgFI_lat/(u0*A2)
+
+# Define DC reluctances
+def RH_L(B1): return l1 / (ut(B1*(A2/A1)) * A1)
+def RH_R(B2): return l1 / (ut(B2*(A2/A1)) * A1)
+
+def RVI_L(B1): return l2_UP / (ut(B1) * A2)
+def RVI_R(B2): return l2_UP / (ut(B2) * A2)
+
+def RM_L(B1,B3): return l1 / (ut((B1-B3)*(A2/A3)) * A3)
+def RM_R(B2,B4): return l1 / (ut((B2-B4)*(A2/A3)) * A3)
+
+def RD_L(B3): return l2_DW / (ut(B3) * A2)
+def RD_R(B4): return l2_DW / (ut(B4) * A2)
+
+def RL_L(B3): return l1 / (ut(B3*(A2/A1)) * A1)
+def RL_R(B4): return l1 / (ut(B4*(A2/A1)) * A1)
+
+def RcVI(BVI): return (l2_UP - lgVI) / (ut(BVI) * Ac)
+def RcFI(BFI): return (l2_DW - lgFI) / (ut(BFI) * Ac)
+
+# DC Equivalent Reluctances
+def RUP_L(B1):    return RgVI_b + RH_L(B1) + RVI_L(B1)
+def RUP_R(B2):    return RgVI_b + RH_R(B2) + RVI_R(B2)
+def RDW_L(B3):  return RgFI_lat + RD_L(B3) + RL_L(B3)
+def RDW_R(B4):  return RgFI_lat + RD_R(B4) + RL_R(B4)
+def RVI(BVI):  return RgVI + RcVI(BVI)
+def RFI(BFI):   return RgFI  + RcFI(BFI)
+
+# Define system of equations
+def equations(vars):
+    B1, B2, BVI, BFI, B3, B4 = vars
+    eq1 = (B1*A2) * (RUP_L(B1) + RVI(BVI) + RM_L(B1,B3)) - (B2*A2) * RVI(BVI) - (B3*A2) * RM_L(B1, B3) - (Nb * Ib - NVI * IVI)
+    eq2 = -(B1*A2) * RVI(BVI) + (B2*A2) * (RVI(BVI) + RUP_R(B2) + RM_R(B2,B4))  - (B4*A2) * RM_R(B2,B4) - (Nb * Ib + NVI * IVI)
+    eq3 = -(B1*A2) * RM_L(B1,B3) + (B3*A2) * (RDW_L(B3) + RM_L(B1,B3) + RFI(BFI)) - (B4*A2) * RFI(BFI) + (NFI * IFI)
+    eq4 = -(B2*A2) * RM_R(B2,B4) - (B3*A2) * RFI(BFI) + (B4*A2) * (RFI(BFI) + RM_R(B2,B4) + RDW_R(B4)) - (NFI * IFI)
+    eq5 = BVI*Ac - B2*A2 + B1*A2
+    eq6 = BFI*Ac - B4*A2 + B3*A2
+    return [eq1, eq2, eq3, eq4, eq5, eq6]
+
+# Initial guesses => B1, B2, BVI, BFI, B3, B4
+initial_guesses = [0.48, 0.48, 0, 0, 0.15, 0.15]
+
+# Define currents
+Ib = 1
+IVI = 1
+IFI = 1
+
+# Solve the system numerically
+solution = fsolve(equations, initial_guesses)
+B1, B2, BVI, BFI, B3, B4 = solution
+
+# Print results
+print(f"B1 (mT): {B1*1e3:.2f}")
+print(f"B2 (mT): {B2*1e3:.2f}")
+print(f"BVI (mT): {BVI*1e3:.2f}")
+print(f"BFI (mT): {BFI*1e3:.2f}")
+print(f"B3 (mT): {B3*1e3:.2f}")
+print(f"B4 (mT): {B4*1e3:.2f}")
+
+## Define AC reluctances
+def rH_L(B1): return l1 / (ud(B1*(A2/A1)) * A1)
+def rH_R(B2): return l1 / (ud(B2*(A2/A1)) * A1)
+
+def rVI_L(B1): return l2_UP / (ud(B1) * A2)
+def rVI_R(B2): return l2_UP / (ud(B2) * A2)
+
+def rM_L(B1,B3): return l1 / (ud((B1-B3)*(A2/A1))*A1)
+def rM_R(B2,B4): return l1 / (ud((B2-B4)*(A2/A1))*A1)
+
+def rD_L(B3): return l2_DW / (ud(B3) * A2)
+def rD_R(B4): return l2_DW / (ud(B4) * A2)
+
+def rL_L(B3): return l1 / (ud(B3*(A2/A1)) * A1)
+def rL_R(B4): return l1 / (ud(B4*(A2/A1)) * A1)
+
+def rcVI(BVI): return (l2_UP - lgVI) / (ud(BVI) * Ac)
+def rcFI(BFI): return (l2_DW - lgFI) / (ud(BFI) * Ac)
+
+# AC Equivalent Reluctances
+def rUP_L(B1):    return RgVI_b + rH_L(B1) + rVI_L(B1)
+def rUP_R(B2):    return RgVI_b + rH_R(B2) + rVI_R(B2)
+def rDW_L(B3):  return RgFI_lat + rD_L(B3) + rL_L(B3)
+def rDW_R(B4):  return RgFI_lat + rD_R(B4) + rL_R(B4)
+def rVI(BVI):  return RgVI + rcVI(BVI)
+def rFI(BFI):   return RgFI  + rcFI(BFI)
+
+# VI Inductance
+def rLVI(B1, B2, BVI, BFI, B3, B4):
+    return (rVI(BVI)) + (((rUP_L(B1) + rM_L(B1,B3))*(rUP_R(B2) + rM_R(B2,B4))) / ((rUP_L(B1) + rM_L(B1,B3))+(rUP_R(B2) + rM_R(B2,B4))))
+
+def LVI(B1, B2, BVI, BFI, B3, B4):
+    return (NVI**2) / rLVI(B1, B2, BVI, BFI, B3, B4)
+
+result_LVI = LVI(B1, B2, BVI, BFI, B3, B4)
+print("LVI (uH):", result_LVI*1e6)
+
+# FI Inductance
+def rLFI(B1, B2, BVI, BFI, B3, B4):
+    return (rFI(BFI)) + (((rDW_L(B3) + rM_L(B1,B3))*(rDW_R(B4) + rM_R(B2,B4))) / ((rDW_L(B3) + rM_L(B1,B3))+(rDW_R(B4) + rM_R(B2,B4))))
+
+def LFI(B1, B2, BVI, BFI, B3, B4):
+    return (NFI**2) / rLFI(B1, B2, BVI, BFI, B3, B4)
+
+result_LFI = LFI(B1, B2, BVI, BFI, B3, B4)
+print("LFI (uH):", result_LFI*1e6)
